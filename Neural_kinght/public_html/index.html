@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical AI - Welcome</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-white min-h-screen flex flex-col items-center justify-center text-gray-800">
+
+    <div class="text-center max-w-2xl px-6">
+        <!-- Icon/Logo -->
+        <div class="mb-8 animate-bounce">
+            <div class="w-24 h-24 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto shadow-lg text-4xl">
+                <i class="fas fa-heartbeat"></i>
+            </div>
+        </div>
+
+        <!-- Heading -->
+        <h1 class="text-5xl font-extrabold text-gray-900 mb-4 tracking-tight">
+            AI Medical Summarizer
+        </h1>
+        
+        <!-- Subheading -->
+        <p class="text-xl text-gray-600 mb-10 leading-relaxed">
+            Upload your medical reports and let our AI extract key details like patient name, diagnosis, and symptoms instantly. Generate a clean, professional PDF summary in seconds.
+        </p>
+
+        <!-- Call to Action Button -->
+        <a href="index1.html" class="group relative inline-flex items-center justify-center px-8 py-4 font-bold text-white transition-all duration-200 bg-blue-600 font-lg rounded-full hover:bg-blue-700 hover:shadow-xl focus:outline-none ring-offset-2 focus:ring-2 ring-blue-400">
+            <span class="mr-2 text-lg">Analyze a Report</span>
+            <i class="fas fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+        </a>
+        <script>
+		var slideIndex = 0;
+		showSlides();
+
+		function showSlides() {
+		  var i;
+		  var slides = document.getElementsByClassName("mySlides");
+		  var dots = document.getElementsByClassName("dot");
+		  for (i = 0; i < slides.length; i++) {
+		    slides[i].style.display = "none";  
+		  }
+		  slideIndex++;
+		  if (slideIndex > slides.length) {slideIndex = 1}    
+		  for (i = 0; i < dots.length; i++) {
+		    dots[i].className = dots[i].className.replace(" active", "");
+		  }
+		  slides[slideIndex-1].style.display = "block";  
+		  dots[slideIndex-1].className += " active";
+		  setTimeout(showSlides, 4500); // Change image every 4.5 seconds
+		}
+		</script>
+        
+        
+        <!-- Footer Features -->
+        <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-gray-500">
+            <div class="flex flex-col items-center">
+                <i class="fas fa-shield-alt text-blue-400 text-2xl mb-2"></i>
+                <span>Secure Processing</span>
+            </div>
+            <div class="flex flex-col items-center">
+                <i class="fas fa-bolt text-yellow-400 text-2xl mb-2"></i>
+                <span>Instant OCR</span>
+            </div>
+            <div class="flex flex-col items-center">
+                <i class="fas fa-file-pdf text-red-400 text-2xl mb-2"></i>
+                <span>PDF Export</span>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

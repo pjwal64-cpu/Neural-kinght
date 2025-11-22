@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Medical Report Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- 1. PDF.js (Read PDF text) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- 2. Tesseract.js (Read Images/OCR) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- 3. jsPDF (Create PDF) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col items-center justify-center text-gray-800 font-sans">
+
+    <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-2xl border border-gray-200">
+        
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="w-20 h-20 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <i class="fas fa-notes-medical text-3xl"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-900">Medical Report Analyzer</h1>
+            <p class="text-gray-500 mt-2">Accepts: PDF, JPG, PNG (Scans & Validates Content)</p>
+        </div>
+
+        <form id="uploadForm" class="space-y-6">
+            <!-- Drop Zone -->
+            <div class="group relative border-2 border-dashed border-blue-300 bg-blue-50 rounded-xl p-10 text-center hover:bg-blue-100 transition-all cursor-pointer">
+                <input type="file" id="fileInput" name="file" accept=".pdf, .png, .jpg, .jpeg" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required>
+                
+                <div class="flex flex-col items-center justify-center">
+                    <i class="fas fa-file-medical-alt text-4xl text-blue-500 mb-3 group-hover:scale-110 transition-transform"></i>
+                    <p class="text-lg font-semibold text-blue-700" id="fileName">Upload Medical Report</p>
+                    <p class="text-xs text-gray-400 mt-1">Supported: PDF, JPG, PNG</p>
+                </div>
+            </div>
+
+            <!-- Process Button -->
+            <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl shadow-md transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                <span class="text-lg mr-2">Scan & Summarize</span>
+                <i class="fas fa-microscope"></i>
+            </button>
+        </form>
+
+        <!-- Processing Logs -->
+        <div id="statusArea" class="mt-6 hidden space-y-3">
+            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+            </div>
+            <p id="statusText" class="text-center text-sm text-blue-600 font-medium animate-pulse">Initializing...</p>
+        </div>
+
+        <!-- Error Alert -->
+        <div id="errorArea" class="mt-6 hidden p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded shadow-sm flex items-start gap-3">
+            <i class="fas fa-exclamation-triangle mt-1"></i>
+            <div>
+                <h3 class="font-bold">Validation Failed</h3>
+                <p class="text-sm" id="errorText">Error description goes here.</p>
+            </div>
+        </div>
+
+        <!-- Success Area -->
+        <div id="successArea" class="mt-6 hidden text-center p-6 bg-green-50 border border-green-200 rounded-xl">
+            <i class="fas fa-check-circle text-4xl text-green-500 mb-2"></i>
+            <h3 class="text-xl font-bold text-green-800">Report Generated!</h3>
+            <p class="text-green-600 text-sm mb-4">Your file has been validated and summarized.</p>
+            <p class="text-xs text-gray-500">File saved as: <span id="savedFileName" class="font-mono font-bold"></span></p>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const fileNameDisplay = document.getElementById('fileName');
+        const submitBtn = document.getElementById('submitBtn');
+        const statusArea = document.getElementById('statusArea');
+        const progressBar = document.getElementById('progressBar');
+        const statusText = document.getElementById('statusText');
+        const errorArea = document.getElementById('errorArea');
+        const errorText = document.getElementById('errorText');
+        const successArea = document.getElementById('successArea');
+        const savedFileNameDisplay = document.getElementById('savedFileName');
+
+        // Required keywords to validate it's a medical document
+        const MEDICAL_KEYWORDS = ["medical", "diagnostic", "hospital", "patient", "clinic", "doctor", "treatment", "diagnosis", "symptoms", "history", "lab", "report", "radiology", "prescription", "scan", "blood"];
+
+        // --- UI HELPERS ---
+        const setProgress = (percent, text) => {
+            progressBar.style.width = `${percent}%`;
+            statusText.textContent = text;
+        };
+
+        const resetUI = () => {
+            statusArea.classList.add('hidden');
+            errorArea.classList.add('hidden');
+            successArea.classList.add('hidden');
+            progressBar.style.width = '0%';
+            submitBtn.disabled = false;
+        };
+
+        // --- FILE INPUT HANDLER ---
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                fileNameDisplay.textContent = e.target.files[0].name;
+                fileNameDisplay.classList.add("text-blue-600");
+                resetUI();
+            }
+        });
+
+        // --- MAIN LOGIC ---
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // Start Processing
+            submitBtn.disabled = true;
+            statusArea.classList.remove('hidden');
+            errorArea.classList.add('hidden');
+            successArea.classList.add('hidden');
+            
+            try {
+                setProgress(10, "Identifying file type...");
+                let extractedText = "";
+
+                // 1. EXTRACT TEXT (OCR or PDF Parse)
+                if (file.type === "application/pdf") {
+                    extractedText = await readPDF(file);
+                } else if (file.type.startsWith("image/")) {
+                    extractedText = await readImageOCR(file);
+                } else {
+                    throw new Error("Unsupported file type. Please upload JPG, PNG, or PDF.");
+                }
+
+                if (!extractedText || extractedText.trim().length < 10) {
+                    throw new Error("Could not read any text. The file might be empty or too blurry.");
+                }
+
+                // 2. VALIDATE CONTENT (Must contain medical terms)
+                setProgress(50, "Validating medical content...");
+                const validationCheck = validateMedicalContent(extractedText);
+                if (!validationCheck.isValid) {
+                    throw new Error(`Invalid Document. Missing medical keywords. Found keywords: ${validationCheck.foundCount}. This does not appear to be a valid Medical, Diagnostic, or Hospital report.`);
+                }
+
+                // 3. EXTRACT METADATA & SUMMARIZE
+                setProgress(70, "Analyzing and structuring data...");
+                const metadata = extractMetadata(extractedText);
+                const summary = generateSummary(extractedText);
+
+                // 4. CREATE PDF
+                setProgress(90, "Generating formatted PDF...");
+                const originalName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+                const outputName = `${originalName}_Summary.pdf`;
+                
+                createAndDownloadFormattedPDF(metadata, summary, outputName);
+
+                // Finish
+                setProgress(100, "Done!");
+                savedFileNameDisplay.textContent = outputName;
+                successArea.classList.remove('hidden');
+                submitBtn.disabled = false;
+
+            } catch (err) {
+                console.error(err);
+                statusArea.classList.add('hidden');
+                errorText.textContent = err.message;
+                errorArea.classList.remove('hidden');
+                submitBtn.disabled = false;
+            }
+        });
+
+        // --- HELPER: READ PDF ---
+        async function readPDF(file) {
+            setProgress(20, "Reading PDF pages...");
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+            let fullText = "";
+            
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(" ");
+                fullText += pageText + " ";
+            }
+            return fullText;
+        }
+
+        // --- HELPER: READ IMAGE (OCR) ---
+        async function readImageOCR(file) {
+            setProgress(20, "Initializing OCR Engine...");
+            const worker = await Tesseract.createWorker('eng');
+            
+            setProgress(40, "Scanning Image (OCR)...");
+            const ret = await worker.recognize(file);
+            await worker.terminate();
+            
+            return ret.data.text;
+        }
+
+        // --- HELPER: VALIDATION ---
+        function validateMedicalContent(text) {
+            const lowerText = text.toLowerCase();
+            let foundCount = 0;
+            MEDICAL_KEYWORDS.forEach(word => {
+                if (lowerText.includes(word)) foundCount++;
+            });
+            return { isValid: foundCount > 0, foundCount: foundCount };
+        }
+
+        // --- HELPER: EXTRACT METADATA (Name, Date, ID) ---
+        function extractMetadata(text) {
+            // Regex patterns to find specific fields
+            const nameMatch = text.match(/(?:Patient Name|Name|Patient)[:\s]+([A-Z][a-zA-Z\s]+)/i);
+            const dobMatch = text.match(/(?:DOB|Date of Birth|Birth Date)[:\s]+([\d\/\-]+)/i);
+            const idMatch = text.match(/(?:Patient ID|MRN|ID)[:\s]+([A-Z0-9]+)/i);
+            const dateMatch = text.match(/(?:Date of Report|Date)[:\s]+([\d\/\-]+)/i);
+            const doctorMatch = text.match(/(?:Physician|Doctor|Dr\.)[:\s]+([A-Za-z\s\.]+)/i);
+            
+            return {
+                name: nameMatch ? nameMatch[1].trim() : "Not Detected",
+                dob: dobMatch ? dobMatch[1].trim() : "Not Detected",
+                id: idMatch ? idMatch[1].trim() : "Not Detected",
+                date: dateMatch ? dateMatch[1].trim() : new Date().toLocaleDateString(),
+                doctor: doctorMatch ? doctorMatch[1].trim() : "Not Detected"
+            };
+        }
+
+        // --- HELPER: SUMMARIZE ---
+        function generateSummary(text) {
+            const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+            if(sentences.length < 3) return { bullets: [text], paragraph: text };
+
+            const stopWords = new Set(["the", "is", "in", "at", "of", "on", "and", "a", "to", "with", "for", "was"]);
+            const words = text.toLowerCase().match(/\b\w+\b/g) || [];
+            const wordFreq = {};
+            
+            words.forEach(w => { if(!stopWords.has(w)) wordFreq[w] = (wordFreq[w] || 0) + 1; });
+            
+            const sentenceScores = sentences.map(s => {
+                const sWords = s.toLowerCase().match(/\b\w+\b/g) || [];
+                let score = 0;
+                sWords.forEach(w => { score += (wordFreq[w] || 0); });
+                return { text: s.trim(), score };
+            });
+
+            sentenceScores.sort((a, b) => b.score - a.score);
+            
+            const topSentences = sentenceScores.slice(0, 5).map(s => s.text);
+            return {
+                bullets: topSentences,
+                paragraph: topSentences.join(" ")
+            };
+        }
+
+        // --- HELPER: GENERATE PDF (STYLE MATCHING YOUR IMAGES) ---
+        function createAndDownloadFormattedPDF(metadata, summary, fileName) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            let yPos = 20;
+
+            // 1. SECTION: EXTRACTED INFORMATION
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(16);
+            doc.text("EXTRACTED INFORMATION", 20, yPos);
+            yPos += 10;
+
+            // Subsection: Patient Information
+            doc.setFontSize(12);
+            doc.text("1. Patient Information:", 20, yPos);
+            yPos += 8;
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            doc.text(`• Name: ${metadata.name}`, 25, yPos); yPos += 6;
+            doc.text(`• Date of Birth: ${metadata.dob}`, 25, yPos); yPos += 6;
+            doc.text(`• Patient ID: ${metadata.id}`, 25, yPos); yPos += 6;
+            doc.text(`• Date of Report: ${metadata.date}`, 25, yPos); yPos += 6;
+            doc.text(`• Referring Physician: ${metadata.doctor}`, 25, yPos); yPos += 10;
+
+            // Subsection: Key Observations (Bullet Points)
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.text("2. Key Observations / Findings:", 20, yPos);
+            yPos += 8;
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            summary.bullets.forEach(bullet => {
+                const splitBullet = doc.splitTextToSize(`• ${bullet}`, 170);
+                doc.text(splitBullet, 25, yPos);
+                yPos += (splitBullet.length * 5) + 2;
+            });
+            yPos += 10;
+
+            // 2. SECTION: DOCUMENT SUMMARY
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(14);
+            doc.text("DOCUMENT SUMMARY", 20, yPos);
+            yPos += 8;
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            const splitSummary = doc.splitTextToSize(summary.paragraph, 170);
+            doc.text(splitSummary, 20, yPos);
+            yPos += (splitSummary.length * 5) + 15;
+
+            // 3. SECTION: SAFE RECOMMENDATIONS (Static/Boilerplate)
+            // Check for page overflow
+            if (yPos > 250) { doc.addPage(); yPos = 20; }
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(14);
+            doc.text("SAFE RECOMMENDATIONS", 20, yPos);
+            yPos += 8;
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            const recommendations = [
+                "• Keep this document for your records.",
+                "• Follow up with your healthcare provider as advised regarding the management plan.",
+                "• If symptoms worsen or new symptoms appear, consult your healthcare provider promptly."
+            ];
+            recommendations.forEach(rec => {
+                doc.text(rec, 25, yPos);
+                yPos += 6;
+            });
+
+            // 4. FOOTER: DISCLAIMER
+            const pageHeight = doc.internal.pageSize.height;
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            const disclaimer = "Important Disclaimer: This tool extracts and structures information only. It does not provide medical advice, diagnosis, or treatment. Always consult qualified healthcare professionals for medical decisions.";
+            const splitDisclaimer = doc.splitTextToSize(disclaimer, 170);
+            doc.text(splitDisclaimer, 20, pageHeight - 20);
+
+            doc.save(fileName);
+        }
+    </script>
+</body>
+</html>
